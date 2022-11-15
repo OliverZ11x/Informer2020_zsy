@@ -8,10 +8,10 @@ parser = argparse.ArgumentParser(description='[Informer] Long Sequences Forecast
 
 parser.add_argument('--model', type=str, default='informer',help='model of experiment, options: [informer, informerstack, informerlight(TBD)]')
 
-parser.add_argument('--data', type=str, default='WTH', help='data')
+parser.add_argument('--data', type=str, default='BP', help='data')
 parser.add_argument('--root_path', type=str, default='./data/', help='root path of the data file')
-parser.add_argument('--data_path', type=str, default='WTH.csv', help='data file')    
-parser.add_argument('--features', type=str, default='M', help='forecasting task, options:[M, S, MS]; M:multivariate predict multivariate, S:univariate predict univariate, MS:multivariate predict univariate')
+parser.add_argument('--data_path', type=str, default='BP.csv', help='data file')    
+parser.add_argument('--features', type=str, default='S', help='forecasting task, options:[M, S, MS]; M:multivariate predict multivariate, S:univariate predict univariate, MS:multivariate predict univariate')
 parser.add_argument('--target', type=str, default='OT', help='target feature in S or MS task')
 # 以小时为单位
 parser.add_argument('--freq', type=str, default='h', help='freq for time features encoding, options:[s:secondly, t:minutely, h:hourly, d:daily, b:business days, w:weekly, m:monthly], you can also use more detailed freq like 15min or 3h')
@@ -58,6 +58,8 @@ parser.add_argument('--lradj', type=str, default='type1',help='adjust learning r
 parser.add_argument('--use_amp', action='store_true', help='use automatic mixed precision training', default=False)
 parser.add_argument('--inverse', action='store_true', help='inverse output data', default=False)
 
+
+
 parser.add_argument('--use_gpu', type=bool, default=True, help='use gpu')
 parser.add_argument('--gpu', type=int, default=0, help='gpu')
 parser.add_argument('--use_multi_gpu', action='store_true', help='use multiple gpus', default=False)
@@ -81,7 +83,10 @@ data_parser = {
     'WTH':{'data':'WTH.csv','T':'WetBulbCelsius','M':[12,12,12],'S':[1,1,1],'MS':[12,12,1]},
     'ECL':{'data':'ECL.csv','T':'MT_320','M':[321,321,321],'S':[1,1,1],'MS':[321,321,1]},
     'Solar':{'data':'solar_AL.csv','T':'POWER_136','M':[137,137,137],'S':[1,1,1],'MS':[137,137,1]},
+    'BP':{'data':'BP.csv','T':'radial','M':[7,7,7],'S':[1,1,1],'MS':[7,7,1]},
 }
+
+
 if args.data in data_parser.keys():
     data_info = data_parser[args.data]
     args.data_path = data_info['data']
