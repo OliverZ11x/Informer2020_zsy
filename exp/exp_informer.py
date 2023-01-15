@@ -1,4 +1,4 @@
-from data.data_loader import Dataset_ETT_hour, Dataset_ETT_minute, Dataset_Custom, Dataset_Pred
+from data.data_loader import Dataset_ETT_hour, Dataset_ETT_minute, Dataset_Custom, Dataset_Pred, Dataset_Pressure
 from exp.exp_basic import Exp_Basic
 from models.model import Informer, InformerStack
 
@@ -77,7 +77,7 @@ class Exp_Informer(Exp_Basic):
         if flag == 'test':
             shuffle_flag = False; drop_last = True; batch_size = args.batch_size; freq=args.freq
         elif flag=='pred':
-            shuffle_flag = False; drop_last = False; batch_size = 1; freq=args.detail_freq
+            shuffle_flag = False; drop_last = True; batch_size = 1; freq=args.detail_freq
             Data = Dataset_Pred
         else:
             shuffle_flag = True; drop_last = True; batch_size = args.batch_size; freq=args.freq
@@ -119,6 +119,9 @@ class Exp_Informer(Exp_Basic):
                 vali_data, batch_x, batch_y, batch_x_mark, batch_y_mark)
             loss = criterion(pred.detach().cpu(), true.detach().cpu())
             total_loss.append(loss)
+            if i+1 == 70: # 71
+                break
+
         total_loss = np.average(total_loss)
         self.model.train()
         return total_loss
@@ -150,7 +153,7 @@ class Exp_Informer(Exp_Basic):
             
             self.model.train()
             epoch_time = time.time()
-            for i, (batch_x,batch_y,batch_x_mark,batch_y_mark) in enumerate(train_loader): # 随机并且重复的再数据集中取batch_size组数据
+            for i, (batch_x,batch_y,batch_x_mark,batch_y_mark) in enumerate(train_loader): # 随机并且重复的在数据集中取batch_size组数据
                 iter_count += 1
                 
                 model_optim.zero_grad()
@@ -159,7 +162,7 @@ class Exp_Informer(Exp_Basic):
                 loss = criterion(pred, true)
                 train_loss.append(loss.item())
                 
-                if (i+1) % 100==0:
+                if (i+1) % 500==0:
                     print("\titers: {0}, epoch: {1} | loss: {2:.7f}".format(i + 1, epoch + 1, loss.item()))
                     speed = (time.time()-time_now)/iter_count
                     left_time = speed*((self.args.train_epochs - epoch)*train_steps - i)
@@ -174,6 +177,8 @@ class Exp_Informer(Exp_Basic):
                 else:
                     loss.backward()
                     model_optim.step()
+                if i+1 == 2000:# 503
+                    break
 
             print("Epoch: {} cost time: {}".format(epoch+1, time.time()-epoch_time))
             train_loss = np.average(train_loss)
@@ -207,6 +212,8 @@ class Exp_Informer(Exp_Basic):
                 test_data, batch_x, batch_y, batch_x_mark, batch_y_mark)
             preds.append(pred.detach().cpu().numpy())
             trues.append(true.detach().cpu().numpy())
+            if i+1 == 140:# 143
+                break
 
         preds = np.array(preds)
         trues = np.array(trues)
@@ -228,6 +235,49 @@ class Exp_Informer(Exp_Basic):
         np.save(folder_path+'true.npy', trues)
 
         return
+
+    def best_parameter(self, setting, load=False):
+        test_data, test_loader = self._get_data(flag='test')
+        
+        if load:
+            path = os.path.join(self.args.checkpoints, setting)
+            best_model_path = path+'/'+'checkpoint.pth'
+            self.model.load_state_dict(torch.load(best_model_path))
+
+        self.model.eval()
+        
+        preds = []
+        trues = []
+
+        for i, (batch_x,batch_y,batch_x_mark,batch_y_mark) in enumerate(test_loader):
+            pred, true = self._process_one_batch(
+                test_data, batch_x, batch_y, batch_x_mark, batch_y_mark)
+            preds.append(pred.detach().cpu().numpy())
+            trues.append(true.detach().cpu().numpy())
+            if i+1 == 140:# 143
+                break
+
+        preds = np.array(preds)
+        trues = np.array(trues)
+        print('test shape:', preds.shape, trues.shape)
+        preds = preds.reshape(-1, preds.shape[-2], preds.shape[-1])
+        trues = trues.reshape(-1, trues.shape[-2], trues.shape[-1])
+        print('test shape:', preds.shape, trues.shape)
+
+        # result save
+        folder_path = './results/' + setting +'/'
+        if not os.path.exists(folder_path):
+            os.makedirs(folder_path)
+
+        mae, mse, rmse, mape, mspe = metric(preds, trues)
+        print('mse:{}, mae:{}'.format(mse, mae))
+
+        np.save(folder_path+'best_metrics.npy', np.array([mae, mse, rmse, mape, mspe]))
+        np.save(folder_path+'best_pred.npy', preds)
+        np.save(folder_path+'best_true.npy', trues)
+
+        return
+
 
     def predict(self, setting, load=False):
         pred_data, pred_loader = self._get_data(flag='pred')
@@ -259,11 +309,12 @@ class Exp_Informer(Exp_Basic):
         return
 
     def _process_one_batch(self, dataset_object, batch_x, batch_y, batch_x_mark, batch_y_mark):
+        batch_ybackup = batch_y.float()
+        batch_y = batch_x.float()
         batch_x = batch_x.float().to(self.device)
-        batch_y = batch_y.float()
 
         batch_x_mark = batch_x_mark.float().to(self.device)
-        batch_y_mark = batch_y_mark.float().to(self.device)
+        batch_y_mark = batch_x_mark.float().to(self.device)
 
         # decoder input
         if self.args.padding==0:
@@ -286,6 +337,7 @@ class Exp_Informer(Exp_Basic):
         if self.args.inverse:
             outputs = dataset_object.inverse_transform(outputs)
         f_dim = -1 if self.args.features=='MS' else 0 #多变量预测还是单变量预测，取0就是多变量预测，取-1就是单变量预测
-        batch_y = batch_y[:,-self.args.pred_len:,f_dim:].to(self.device)
+        # batch_y = batch_y[:,-self.args.pred_len:,f_dim:].to(self.device)
+        batch_y = batch_ybackup.to(self.device)
 
         return outputs, batch_y
